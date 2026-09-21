@@ -1,4 +1,4 @@
-const CACHE = 'local-ai-video-translator-v1';
+const CACHE = 'local-ai-video-translator-v2';
 const APP_SHELL = [
   './',
   './index.html',
