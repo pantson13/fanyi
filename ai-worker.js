@@ -4,7 +4,7 @@ env.allowLocalModels = false;
 env.useBrowserCache = true;
 
 const ASR_MODEL = 'onnx-community/whisper-tiny.en';
-const TRANSLATE_MODEL = 'Xenova/opus-mt--en-zh';
+const TRANSLATE_MODEL = 'Xenova/opus-mt-en-zh';
 
 let asr = null;
 let translator = null;
@@ -57,10 +57,10 @@ async function init() {
     return;
   }
 
-  report('loading', { message: '正在加载英文语音识别模型…g });
+  report('loading', { message: '正在加载英文语音识别模型…' });
   asr = await createPipeline('automatic-speech-recognition', ASR_MODEL, 'q8');
 
-  report('loading', { message: '档过开始堄中文 块。' });
+  report('loading', { message: '正在加载英→中翻译模型…' });
   translator = await createPipeline('translation', TRANSLATE_MODEL, 'q8');
 
   self.postMessage({ type: 'READY', device });
