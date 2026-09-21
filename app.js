@@ -106,7 +106,7 @@ function createWorker() {
       startBtn.textContent = translationActive ? '停止翻译' : '开始实时翻译';
       log(`模型加载完成，推理设备：${msg.device}`);
       if (translationActive && video.paused) {
-        video.play().catch(() => setStatus('本地 AI 已就绪', '请手动点视频播放按钮开始。', 'ok'));
+        setStatus('本地 AI 已就绪', '请手动点视频播放按钮开始；程序不会再自动播放。', 'ok');
       }
       return;
     }
@@ -268,10 +268,12 @@ async function startTranslation() {
   try {
     await ensureAudioTap();
     if (!workerReady) {
-      if (!video.paused) video.pause();
       initAI();
+      if (video.paused) {
+        setStatus('正在加载本地 AI', '模型加载期间视频仍可手动播放；模型就绪后会从当前播放位置开始识别。', 'warn');
+      }
     } else if (video.paused) {
-      await video.play();
+      setStatus('本地 AI 已就绪', '请手动点视频播放按钮开始。', 'ok');
     }
   } catch (error) {
     translationActive = false;
@@ -292,7 +294,47 @@ function stopTranslation() {
   setStatus(workerReady ? '翻译已停止' : '等待启动', '视频仍可正常播放。', workerReady ? 'ok' : '');
 }
 
+
+function releaseAIWorkerBeforeFilePicker() {
+  // 只释放 AI Worker。模型文件仍由浏览器缓存管理；下次开始翻译时重新实例化。
+  if (worker) {
+    try { worker.terminate(); } catch (_) {}
+    worker = null;
+  }
+
+  workerReady = false;
+  translationActive = false;
+  pending.clear();
+  pausedForBacklog = false;
+  rawChunks = [];
+  rawSamples = 0;
+  latestSubtitle = { source: '', zh: '', until: 0 };
+
+  startBtn.textContent = '开始实时翻译';
+  modelMetric.textContent = '模型：待重新载入';
+  queueMetric.textContent = '队列：0';
+  setProgress(0);
+  renderSubtitle();
+
+  try {
+    sessionStorage.setItem('fanyi-file-picker-open', String(Date.now()));
+  } catch (_) {}
+
+  log('打开文件选择器前已释放 AI Worker 内存，避免 iOS 因内存压力重载页面。');
+}
+
+videoFile.addEventListener('click', () => {
+  releaseAIWorkerBeforeFilePicker();
+});
+
+videoFile.addEventListener('cancel', () => {
+  try { sessionStorage.removeItem('fanyi-file-picker-open'); } catch (_) {}
+  setStatus('已取消选择视频', 'AI 模型将在下次开始翻译时重新载入。', '');
+});
+
 videoFile.addEventListener('change', async () => {
+  try { sessionStorage.removeItem('fanyi-file-picker-open'); } catch (_) {}
+
   const file = videoFile.files?.[0];
   if (!file) return;
 
@@ -327,6 +369,42 @@ document.addEventListener('dblclick', (event) => {
   if (event.target.closest('.video-wrap')) {
     setTheater(!document.body.classList.contains('theater'));
   }
+});
+
+
+video.addEventListener('loadedmetadata', () => {
+  const duration = Number.isFinite(video.duration) ? video.duration : 0;
+  const mins = Math.floor(duration / 60);
+  const secs = Math.floor(duration % 60);
+  setStatus(
+    '视频已读取',
+    duration ? `时长 ${mins}:${String(secs).padStart(2, '0')} · 可以手动播放` : '可以手动播放',
+    'ok'
+  );
+  log(`视频元数据已读取：duration=${video.duration}, videoWidth=${video.videoWidth}, videoHeight=${video.videoHeight}`);
+});
+
+video.addEventListener('canplay', () => {
+  if (!translationActive) {
+    setStatus('视频可以播放', '先确认视频能正常播放，再点“开始实时翻译”。', 'ok');
+  }
+});
+
+video.addEventListener('error', () => {
+  const err = video.error;
+  const names = {
+    1: 'MEDIA_ERR_ABORTED',
+    2: 'MEDIA_ERR_NETWORK',
+    3: 'MEDIA_ERR_DECODE',
+    4: 'MEDIA_ERR_SRC_NOT_SUPPORTED',
+  };
+  const name = names[err?.code] || 'UNKNOWN_MEDIA_ERROR';
+  setStatus(
+    'Safari 无法播放这个视频',
+    `${name}。如果播放键出现斜线，通常是视频/音频编码不受 Safari 支持。`,
+    'bad'
+  );
+  log(`VIDEO ERROR: code=${err?.code || 0} ${name} message=${err?.message || ''}`);
 });
 
 video.addEventListener('seeking', () => {
@@ -365,6 +443,20 @@ subtitleBottom.addEventListener('input', () => document.documentElement.style.se
 window.addEventListener('beforeunload', () => {
   if (objectUrl) URL.revokeObjectURL(objectUrl);
 });
+
+
+try {
+  const pickerOpenedAt = Number(sessionStorage.getItem('fanyi-file-picker-open') || 0);
+  if (pickerOpenedAt && Date.now() - pickerOpenedAt < 5 * 60 * 1000) {
+    sessionStorage.removeItem('fanyi-file-picker-open');
+    setStatus(
+      '检测到页面曾在选择视频时被 iOS 重载',
+      '新版会在打开文件选择器前释放 AI 模型内存，降低再次重载的概率。',
+      'warn'
+    );
+    log('检测到 file picker 期间页面发生重新载入。');
+  }
+} catch (_) {}
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch((error) => log(`Service worker: ${error.message}`));
