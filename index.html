@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#0b0d10" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="本地AI字幕" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="stylesheet" href="./styles.css" />
+  <title>本地 AI 视频字幕</title>
+</head>
+<body>
+  <main class="app-shell" id="appShell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">LOCAL AI VIDEO TRANSLATOR</div>
+        <h1>本地 AI 视频字幕</h1>
+      </div>
+      <button id="theaterBtn" class="ghost-btn" type="button">影院模式</button>
+    </header>
+
+    <section class="privacy-card">
+      <strong>视频不会上传。</strong>
+      <span>你选择的视频只在当前设备里播放和处理；首次使用需要联网下载本地 AI 模型。</span>
+    </section>
+
+    <section class="player-card">
+      <div class="video-wrap" id="videoWrap">
+        <video id="video" playsinline webkit-playsinline controls preload="metadata"></video>
+        <button id="exitTheaterBtn" class="theater-exit" type="button" aria-label="退出影院模式">退出影院</button>
+        <div class="subtitle-layer" id="subtitleLayer" aria-live="polite">
+          <div class="subtitle-en" id="subtitleEn"></div>
+          <div class="subtitle-zh" id="subtitleZh"></div>
+        </div>
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">▶</div>
+          <div class="empty-title">先选择一个本地视频</div>
+          <div class="empty-desc">推荐 MP4 / H.264 + AAC。Safari 对某些 MKV、特殊编码可能不认。</div>
+        </div>
+      </div>
+
+      <div class="primary-actions">
+        <label class="file-btn">
+          <input id="videoFile" type="file" accept="video/*" />
+          选择本地视频
+        </label>
+        <button id="startBtn" class="primary-btn" type="button" disabled>开始实时翻译</button>
+      </div>
+    </section>
+
+    <section class="status-card">
+      <div class="status-row">
+        <span class="status-dot" id="statusDot"></span>
+        <div>
+          <div class="status-main" id="statusMain">等待选择视频</div>
+          <div class="status-sub" id="statusSub">首次加载模型时请保持页面前台。</div>
+        </div>
+      </div>
+      <div class="progress-track" aria-hidden="true"><div id="progressBar" class="progress-bar"></div></div>
+      <div class="metrics">
+        <span id="modelMetric">模型：未加载</span>
+        <span id="queueMetric">队列：0</span>
+        <span id="deviceMetric">推理：检测中</span>
+      </div>
+    </section>
+
+    <section class="settings-card">
+      <h2>字幕设置</h2>
+      <div class="settings-grid">
+        <label>
+          <span>显示模式</span>
+          <select id="subtitleMode">
+            <option value="bilingual">中英双语</option>
+            <option value="zh">仅中文</option>
+            <option value="en">仅英文识别</option>
+          </select>
+        </label>
+        <label>
+          <span>识别分段</span>
+          <select id="chunkSeconds">
+            <option value="3">3 秒（更快）</option>
+            <option value="5" selected>5 秒（推荐）</option>
+            <option value="8">8 秒（更稳）</option>
+          </select>
+        </label>
+        <label>
+          <span>字幕字号</span>
+          <input id="fontSize" type="range" min="18" max="42" value="28" />
+        </label>
+        <label>
+          <span>字幕位置</span>
+          <input id="subtitleBottom" type="range" min="6" max="34" value="14" />
+        </label>
+      </div>
+      <label class="switch-row">
+        <input id="autoPause" type="checkbox" checked />
+        <span>AI 队列积压时自动暂停视频，避免字幕越拖越远</span>
+      </label>
+    </section>
+
+    <section class="tips-card">
+      <h2>iPhone 使用建议</h2>
+      <p>用 Safari 打开后，点“分享 → 添加到主屏幕”。从桌面打开时地址栏不会一直占地方，影院模式也更接近全屏。</p>
+      <p>第一版直接分析视频播放出来的声音，所以视频必须实际播放。后续可以再做“整部视频提前生成字幕”。</p>
+    </section>
+
+    <details class="debug-card">
+      <summary>运行日志</summary>
+      <pre id="log"></pre>
+    </details>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
