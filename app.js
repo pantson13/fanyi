@@ -15,6 +15,7 @@ const deviceMetric = $('#deviceMetric');
 const subtitleLayer = $('#subtitleLayer');
 const subtitleEn = $('#subtitleEn');
 const subtitleZh = $('#subtitleZh');
+const sourceLanguage = $('#sourceLanguage');
 const subtitleMode = $('#subtitleMode');
 const chunkSeconds = $('#chunkSeconds');
 const fontSize = $('#fontSize');
@@ -36,7 +37,7 @@ let chunkStartTime = 0;
 let idCounter = 0;
 let pending = new Map();
 let pausedForBacklog = false;
-let latestSubtitle = { en: '', zh: '', until: 0 };
+let latestSubtitle = { source: '', zh: '', until: 0 };
 let lastModelProgress = 0;
 
 function log(message) {
@@ -89,8 +90,9 @@ function createWorker() {
 
     if (msg.type === 'STATUS') {
       if (msg.stage === 'loading') setStatus('正在加载本地 AI', msg.message || '', 'warn');
-      if (msg.stage === 'recognizing') setStatus('正在听视频声音', '本地 Whisper 正在识别英文。', 'ok');
-      if (msg.stage === 'translating') setStatus('正在翻译', '英→中模型正在生成字幕。', 'ok');
+      if (msg.stage === 'recognizing') setStatus('正在听视频声音', `本地 Whisper 正在识别${msg.language === 'ja' ? '日文' : '英文'}。`, 'ok');
+      if (msg.stage === 'bridging') setStatus('正在处理日文', '本地 Whisper 正在把日语语音转换为英文中间层。', 'ok');
+      if (msg.stage === 'translating') setStatus('正在翻译', '本地英→中模型正在生成中文字幕。', 'ok');
       if (msg.stage === 'warning') log(msg.message || 'Worker warning');
       return;
     }
@@ -118,12 +120,12 @@ function createWorker() {
       const current = video.currentTime || 0;
       const hold = Math.max(4.2, Number(chunkSeconds.value) * 0.9);
       latestSubtitle = {
-        en: msg.english || '',
+        source: msg.original || '',
         zh: msg.chinese || '',
         until: Math.max(meta.end, current + hold),
       };
       renderSubtitle();
-      log(`字幕 #${msg.id} (${(msg.elapsed / 1000).toFixed(1)}s): ${msg.english || '[无语音]'} -> ${msg.chinese || '[无译文]'}`);
+      log(`字幕 #${msg.id} (${(msg.elapsed / 1000).toFixed(1)}s): ${msg.original || '[无语音]'} -> ${msg.chinese || '[无译文]'}`);
       return;
     }
 
@@ -149,13 +151,13 @@ function initAI() {
 }
 
 function renderSubtitle() {
-  const active = translationActive && latestSubtitle.until > (video.currentTime || 0) && (latestSubtitle.en || latestSubtitle.zh);
+  const active = translationActive && latestSubtitle.until > (video.currentTime || 0) && (latestSubtitle.source || latestSubtitle.zh);
   subtitleLayer.classList.toggle('has-text', !!active);
 
   const mode = subtitleMode.value;
-  subtitleEn.textContent = latestSubtitle.en;
+  subtitleEn.textContent = latestSubtitle.source;
   subtitleZh.textContent = latestSubtitle.zh;
-  subtitleEn.classList.toggle('show', active && (mode === 'bilingual' || mode === 'en'));
+  subtitleEn.classList.toggle('show', active && (mode === 'bilingual' || mode === 'source'));
   subtitleZh.classList.toggle('show', active && (mode === 'bilingual' || mode === 'zh'));
 }
 
@@ -205,6 +207,7 @@ function flushAudioChunk() {
     id,
     audio: pcm16k.buffer,
     duration: Math.max(2, end - start),
+    sourceLanguage: sourceLanguage.value,
   }, [pcm16k.buffer]);
 }
 
@@ -259,7 +262,8 @@ async function startTranslation() {
 
   translationActive = true;
   startBtn.textContent = '停止翻译';
-  setStatus('正在准备本地 AI', '首次使用需要下载模型，请保持此页面在前台。', 'warn');
+  const sourceName = sourceLanguage.value === 'ja' ? '日文' : '英文';
+  setStatus('正在准备本地 AI', `当前原语言：${sourceName}。首次使用需要下载模型，请保持此页面在前台。`, 'warn');
 
   try {
     await ensureAudioTap();
@@ -283,7 +287,7 @@ function stopTranslation() {
   flushAudioChunk();
   rawChunks = [];
   rawSamples = 0;
-  latestSubtitle = { en: '', zh: '', until: 0 };
+  latestSubtitle = { source: '', zh: '', until: 0 };
   renderSubtitle();
   setStatus(workerReady ? '翻译已停止' : '等待启动', '视频仍可正常播放。', workerReady ? 'ok' : '');
 }
@@ -328,7 +332,7 @@ document.addEventListener('dblclick', (event) => {
 video.addEventListener('seeking', () => {
   rawChunks = [];
   rawSamples = 0;
-  latestSubtitle = { en: '', zh: '', until: 0 };
+  latestSubtitle = { source: '', zh: '', until: 0 };
   renderSubtitle();
 });
 
@@ -342,6 +346,18 @@ video.addEventListener('ended', () => {
 });
 
 video.addEventListener('timeupdate', renderSubtitle);
+sourceLanguage.addEventListener('change', () => {
+  if (translationActive) stopTranslation();
+  pending.clear();
+  updateQueue();
+  rawChunks = [];
+  rawSamples = 0;
+  latestSubtitle = { source: '', zh: '', until: 0 };
+  renderSubtitle();
+  const name = sourceLanguage.value === 'ja' ? '日文' : '英文';
+  setStatus('原语言已切换', `当前：${name}。重新点“开始实时翻译”即可。`, 'ok');
+  log(`原语言切换为：${name}`);
+});
 subtitleMode.addEventListener('change', renderSubtitle);
 fontSize.addEventListener('input', () => document.documentElement.style.setProperty('--subtitle-size', `${fontSize.value}px`));
 subtitleBottom.addEventListener('input', () => document.documentElement.style.setProperty('--subtitle-bottom', `${subtitleBottom.value}%`));
