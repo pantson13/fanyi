@@ -3,7 +3,7 @@ import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transfo
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
-const ASR_MODEL = 'onnx-community/whisper-tiny.en';
+const ASR_MODEL = 'onnx-community/whisper-tiny';
 const TRANSLATE_MODEL = 'Xenova/opus-mt-en-zh';
 
 let asr = null;
@@ -57,7 +57,7 @@ async function init() {
     return;
   }
 
-  report('loading', { message: '正在加载英文语音识别模型…' });
+  report('loading', { message: '正在加载多语言 Whisper 语音识别模型…' });
   asr = await createPipeline('automatic-speech-recognition', ASR_MODEL, 'q8');
 
   report('loading', { message: '正在加载英→中翻译模型…' });
@@ -66,35 +66,79 @@ async function init() {
   self.postMessage({ type: 'READY', device });
 }
 
+function asrOptions(duration, language, task) {
+  return {
+    chunk_length_s: Math.max(2, Math.min(12, duration || 5)),
+    stride_length_s: 0,
+    language,
+    task,
+  };
+}
+
 async function processChunk(msg) {
   if (!asr || !translator) await init();
 
   const audio = new Float32Array(msg.audio);
   const started = performance.now();
+  const sourceLanguage = msg.sourceLanguage === 'ja' ? 'ja' : 'en';
 
-  report('recognizing', { id: msg.id });
-  const recognized = await asr(audio, {
-    chunk_length_s: Math.max(2, Math.min(12, msg.duration || 5)),
-    stride_length_s: 0,
-  });
+  report('recognizing', { id: msg.id, language: sourceLanguage });
+  const recognized = await asr(
+    audio,
+    asrOptions(msg.duration, sourceLanguage, 'transcribe')
+  );
 
-  const english = String(recognized?.text || '').trim();
-  if (!english) {
-    self.postMessage({ type: 'RESULT', id: msg.id, english: '', chinese: '', elapsed: performance.now() - started });
+  const original = String(recognized?.text || '').trim();
+  if (!original) {
+    self.postMessage({
+      type: 'RESULT',
+      id: msg.id,
+      original: '',
+      chinese: '',
+      elapsed: performance.now() - started,
+    });
     return;
   }
 
-  report('translating', { id: msg.id, english });
-  const translated = await translator(english, {
+  let englishBridge = original;
+
+  if (sourceLanguage === 'ja') {
+    report('bridging', { id: msg.id, language: sourceLanguage });
+    const translatedSpeech = await asr(
+      audio,
+      asrOptions(msg.duration, 'ja', 'translate')
+    );
+    englishBridge = String(translatedSpeech?.text || '').trim();
+  }
+
+  if (!englishBridge) {
+    self.postMessage({
+      type: 'RESULT',
+      id: msg.id,
+      original,
+      chinese: '',
+      elapsed: performance.now() - started,
+    });
+    return;
+  }
+
+  report('translating', { id: msg.id, language: sourceLanguage });
+  const translated = await translator(englishBridge, {
     max_new_tokens: 160,
   });
 
-  const chinese = String(translated?.[0]?.translation_text || translated?.translation_text || '').trim();
+  const chinese = String(
+    translated?.[0]?.translation_text ||
+    translated?.translation_text ||
+    ''
+  ).trim();
+
   self.postMessage({
     type: 'RESULT',
     id: msg.id,
-    english,
+    original,
     chinese,
+    bridge: sourceLanguage === 'ja' ? englishBridge : '',
     elapsed: performance.now() - started,
   });
 }
@@ -102,10 +146,19 @@ async function processChunk(msg) {
 self.onmessage = (event) => {
   const msg = event.data || {};
   if (msg.type === 'INIT') {
-    chain = chain.then(init).catch((error) => self.postMessage({ type: 'ERROR', message: error?.stack || error?.message || String(error) }));
+    chain = chain
+      .then(init)
+      .catch((error) => self.postMessage({
+        type: 'ERROR',
+        message: error?.stack || error?.message || String(error),
+      }));
   } else if (msg.type === 'PROCESS') {
     chain = chain
       .then(() => processChunk(msg))
-      .catch((error) => self.postMessage({ type: 'ERROR', id: msg.id, message: error?.stack || error?.message || String(error) }));
+      .catch((error) => self.postMessage({
+        type: 'ERROR',
+        id: msg.id,
+        message: error?.stack || error?.message || String(error),
+      }));
   }
 };
