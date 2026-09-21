@@ -71,11 +71,18 @@
       <h2>字幕设置</h2>
       <div class="settings-grid">
         <label>
+          <span>原语言</span>
+          <select id="sourceLanguage">
+            <option value="en" selected>英文</option>
+            <option value="ja">日文</option>
+          </select>
+        </label>
+        <label>
           <span>显示模式</span>
           <select id="subtitleMode">
-            <option value="bilingual">中英双语</option>
+            <option value="bilingual">双语</option>
             <option value="zh">仅中文</option>
-            <option value="en">仅英文识别</option>
+            <option value="source">仅原文</option>
           </select>
         </label>
         <label>
@@ -104,6 +111,7 @@
     <section class="tips-card">
       <h2>iPhone 使用建议</h2>
       <p>用 Safari 打开后，点“分享 → 添加到主屏幕”。从桌面打开时地址栏不会一直占地方，影院模式也更接近全屏。</p>
+      <p>支持英文和日文声音。日文模式会先在本地识别日语，再用 Whisper 本地转成英文中间层，最后翻成中文，因此会比英文模式更吃性能。</p>
       <p>第一版直接分析视频播放出来的声音，所以视频必须实际播放。后续可以再做“整部视频提前生成字幕”。</p>
     </section>
 
